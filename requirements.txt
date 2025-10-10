@@ -5,3 +5,5 @@ yfinance==0.2.18
 requests==2.31.0
 flask==2.3.3
 setuptools==69.0.3
+flask==2.3.3
+requests==2.31.0
