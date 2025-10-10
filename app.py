@@ -1,58 +1,85 @@
-# app.py - VERSIÓN SIMPLIFICADA PARA DEBUG
 import os
 import time
 import requests
+import yfinance as yf
+import pandas as pd
 from datetime import datetime, timezone
 from flask import Flask
 
 app = Flask(__name__)
 
 # Configuración
-TELEGRAM_TOKEN = os.getenv("8371038763:AAEtYlJKqR1lD07dB7tdCmR4iR9NfTUTnxU", "")
-CHAT_ID = os.getenv("5424722852", "")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8371038763:AAEtYlJKqR1lD07dB7tdCmR4iR9NfTUTnxU")
+CHAT_ID = os.getenv("CHAT_ID", "5424722852")
 
-def send_telegram(text):
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        return False
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+# Lista simple de tickers
+TICKERS = ["AAPL", "MSFT", "TSLA", "BTC-USD", "GC=F", "MXN=X"]
+
+def send_telegram(message):
     try:
-        requests.post(url, json={"chat_id": CHAT_ID, "text": text}, timeout=10)
-        return True
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        response = requests.post(url, json={"chat_id": CHAT_ID, "text": message})
+        return response.status_code == 200
     except:
         return False
 
-def bot_loop():
-    print("🤖 INICIANDO BOT...")
-    send_telegram("✅ Bot iniciado en Render")
-    
-    count = 0
-    while True:
-        try:
-            count += 1
-            msg = f"🔔 Señal de prueba #{count} - {datetime.now(timezone.utc).strftime('%H:%M UTC')}"
-            print(msg)
-            send_telegram(msg)
-            time.sleep(60)  # 1 minuto para prueba
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            time.sleep(30)
+def check_ticker(ticker):
+    try:
+        # Descargar datos
+        df = yf.download(ticker, period="1mo", progress=False)
+        if df.empty:
+            return None
+        
+        # Calcular tendencia simple
+        current = df['Close'].iloc[-1]
+        prev = df['Close'].iloc[-2]
+        change = ((current - prev) / prev) * 100
+        
+        if abs(change) > 1.0:  # Cambio mayor al 1%
+            return f"{ticker}: {change:+.2f}% - Precio: {current:.2f}"
+        return None
+    except:
+        return None
 
 @app.route('/')
 def home():
-    return "🤖 Bot ACTIVO - Enviando señales cada 1 minuto"
+    return """
+    <html>
+        <head><title>🤖 Trading Bot</title></head>
+        <body>
+            <h1>✅ Bot de Trading Activo</h1>
+            <p>Monitoreando: AAPL, MSFT, TSLA, BTC, Oro, USD/MXN</p>
+            <p><a href="/check">🔍 Verificar Mercados</a></p>
+            <p><a href="/test">📱 Test Telegram</a></p>
+        </body>
+    </html>
+    """
+
+@app.route('/check')
+def check_markets():
+    signals = []
+    for ticker in TICKERS:
+        signal = check_ticker(ticker)
+        if signal:
+            signals.append(signal)
+    
+    if signals:
+        message = "🚨 SEÑALES:\n" + "\n".join(signals)
+        send_telegram(message)
+        return f"<h3>📈 Señales Enviadas:</h3><pre>{message}</pre>"
+    else:
+        return "<h3>⚡ No hay señales fuertes</h3>"
+
+@app.route('/test')
+def test_telegram():
+    success = send_telegram(f"✅ Bot activo - {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
+    return f"📱 Telegram: {'✅ ENVIADO' if success else '❌ ERROR'}"
 
 @app.route('/health')
 def health():
     return "🟢 OK"
 
 if __name__ == "__main__":
-    # Iniciar bot en segundo plano
-    import threading
-    bot_thread = threading.Thread(target=bot_loop)
-    bot_thread.daemon = True
-    bot_thread.start()
-    
-    # Iniciar web
-    port = int(os.environ.get('PORT', 10000))
-    print(f"🚀 Iniciando en puerto {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print("🚀 Bot iniciado - Web Service Gratuito")
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False)
