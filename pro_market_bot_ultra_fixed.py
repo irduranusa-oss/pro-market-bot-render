@@ -1,7 +1,6 @@
 # pro_market_bot_ultra_fixed.py
-# Bot GLOBAL 24/7 – rotación automática por región.
-# Señales técnicas fuertes con score, objetivo, gráfico y envío a Telegram.
-# Reqs: pip install yfinance requests pandas numpy matplotlib openpyxl
+# Bot GLOBAL 24/7 – OPTIMIZADO para Render Free Tier
+# Version ligera con menos tickers para evitar errores 502/503
 
 import os, time, io, json, warnings, traceback, requests
 from datetime import datetime, timezone
@@ -22,14 +21,11 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
 PORT = int(os.getenv("PORT", 10000))
 
-MIN_SCORE   = 60
+MIN_SCORE   = 65  # Aumentado para ser más selectivo
 BULL_PROB   = 70
 BEAR_PROB   = 30
-MIN_ATR_PCT = 0.4
-POLL_SECONDS = 300
-
-CSV_LOG  = "signals_log.csv"
-XLSX_DASH = "dashboard.xlsx"
+MIN_ATR_PCT = 0.5  # Aumentado para filtrar más
+POLL_SECONDS = 600  # 10 minutos entre ciclos (más tiempo)
 
 # === SERVIDOR HTTP PARA HEALTH CHECK DE RENDER ===
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -40,7 +36,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'Bot running OK')
     
     def log_message(self, format, *args):
-        pass  # Silenciar logs del servidor
+        pass
 
 def start_health_server():
     server = HTTPServer(('0.0.0.0', PORT), HealthCheckHandler)
@@ -51,53 +47,29 @@ def start_health_server():
 def utc_now(): return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 def current_hour(): return datetime.now(timezone.utc).hour
 
-# === LISTA GLOBAL DE TICKERS EXTENDIDA ===
+# === LISTA REDUCIDA DE TICKERS (SOLO LO MÁS IMPORTANTE) ===
 TICKERS_ALL = {
     "AMERICA": [
-        "^GSPC","^DJI","^IXIC","^MXX","^BVSP","^RUT","^VIX",
-        "AAPL","MSFT","GOOGL","AMZN","META","TSLA","NVDA","AMD","INTC","JPM","V","MA",
-        "DIS","NKE","PFE","MRNA","KO","PEP","WMT","BA","COST","XOM","CVX",
-        "ORCL","ADBE","CRM","PYPL","AVGO","CSCO","QCOM","ABNB","UBER","SNOW",
-        "BBDC4.SA","ITUB4.SA","PETR4.SA","VALE3.SA","WEGE3.SA","B3SA3.SA",
-        "BTC-USD","ETH-USD","SOL-USD","DOGE-USD","ADA-USD","BNB-USD","XRP-USD","DOT-USD",
-        "USDMXN=X","USDCAD=X","USDCLP=X","USDARS=X","USDCOP=X","USDBRL=X","USDPEN=X",
-        "GC=F","CL=F","SI=F","HG=F","NG=F","ZC=F","ZS=F","ZL=F","ZO=F"
+        "^GSPC","^DJI","^IXIC","^VIX",
+        "AAPL","MSFT","GOOGL","AMZN","META","TSLA","NVDA",
+        "BTC-USD","ETH-USD","SOL-USD",
+        "USDMXN=X","GC=F","CL=F"
     ],
     "MEXICO": [
         "^MXX",
         "AMXL.MX","GFNORTEO.MX","CEMEXCPO.MX","WALMEX.MX","FEMSAUBD.MX",
-        "BIMBOA.MX","GMEXICOB.MX","KIMBERA.MX","ALPEKA.MX","GCC.MX","AC.MX","ALSEA.MX",
-        "TLEVISACPO.MX","BBAJIOO.MX","MEGACPO.MX","GAPB.MX","ASURB.MX","OMAB.MX",
-        "LABB.MX","GFINBURO.MX","PINFRA.MX","ALFA.MX","PE&OLES.MX","CUERVO.MX",
-        "LIVEPOLC-1.MX","ELEKTRA.MX","GRUMAB.MX","GCARSOA1.MX","SORIANAB.MX",
-        "POSADAS.MX","VOLARA.MX","VESTA.MX","FUNO11.MX","TERRA13.MX",
-        "NAFTRACISHRS.MX","MEXTRACISHRS.MX",
-        "USDMXN=X","EURMXN=X","GBPMXN=X","MXNPKR=X",
-        "GC=F","SLV=F","HG=F","CL=F"
+        "BIMBOA.MX","GMEXICOB.MX",
+        "USDMXN=X","GC=F","CL=F"
     ],
     "EUROPA": [
-        "^FTSE","^GDAXI","^FCHI","^STOXX50E","^IBEX","^AEX","^OMX","^SMI",
-        "SIE.DE","SAP.DE","VOW3.DE","BMW.DE","BAS.DE","ALV.DE","DAI.DE",
-        "AIR.PA","BN.PA","MC.PA","OR.PA","SAN.PA","TTE.PA","FR.PA",
-        "NESN.SW","ROG.SW","NOVN.SW","UBSG.SW","CSGN.SW","ZURN.SW",
-        "ULVR.L","BP.L","RIO.L","HSBA.L","AZN.L","GSK.L","BATS.L","DGE.L","REL.L",
-        "ENEL.MI","ISP.MI","ENI.MI","STLAM.MI","UCG.MI","PST.MI",
-        "SAN.MC","BBVA.MC","ITX.MC","IBE.MC","REP.MC","TEF.MC","AENA.MC","MAP.MC",
-        "ASML.AS","INGA.AS","PHIA.AS","AD.AS","UNA.AS",
-        "EURUSD=X","GBPUSD=X","EURCHF=X","USDCHF=X","EURGBP=X","EURNOK=X","EURSEK=X",
-        "BTC-EUR","ETH-EUR","SOL-EUR","ADA-EUR"
+        "^FTSE","^GDAXI","^FCHI","^STOXX50E",
+        "SIE.DE","SAP.DE","AIR.PA","MC.PA",
+        "EURUSD=X","BTC-EUR"
     ],
     "ASIA": [
-        "^N225","^HSI","^BSESN","^KS11","^TWII","^AXJO","^STI","^JKSE",
-        "7203.T","6758.T","9984.T","8035.T","7974.T","9433.T","9434.T","8766.T",
-        "005930.KS","000660.KS","035420.KS","051910.KS","006400.KS",
-        "2317.TW","2330.TW","2454.TW","2303.TW","2308.TW",
-        "BABA","JD","PDD","TCEHY","NTES","BIDU","NIO","XPEV","LI",
-        "RELIANCE.NS","INFY.NS","TCS.NS","HDFCBANK.NS","ICICIBANK.NS","HINDUNILVR.NS",
-        "BHP.AX","RIO.AX","CBA.AX","NAB.AX","WBC.AX",
-        "BTC-USD","ETH-USD","SOL-USD","XRP-USD","TRX-USD","ADA-USD","AVAX-USD",
-        "USDJPY=X","AUDUSD=X","USDCNH=X","USDINR=X","USDSGD=X","USDKRW=X","USDTWD=X",
-        "GC=F","SI=F","CL=F"
+        "^N225","^HSI","^BSESN",
+        "BABA","TCEHY","USDJPY=X",
+        "BTC-USD","GC=F"
     ]
 }
 
@@ -115,15 +87,21 @@ def send_telegram_text(text):
         print("[WARNING] Telegram credentials not configured")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    try: _http.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
-    except Exception as e: print(f"[ERROR] Telegram text: {e}")
+    try: 
+        _http.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
+        print(f"[INFO] Message sent to Telegram")
+    except Exception as e: 
+        print(f"[ERROR] Telegram text: {e}")
 
 def send_telegram_photo(caption, img, filename="chart.png"):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    try: _http.post(url, files={"photo": (filename, img)}, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption}, timeout=20)
-    except Exception as e: print(f"[ERROR] Telegram photo: {e}")
+    try: 
+        _http.post(url, files={"photo": (filename, img)}, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption}, timeout=20)
+        print(f"[INFO] Photo sent to Telegram")
+    except Exception as e: 
+        print(f"[ERROR] Telegram photo: {e}")
 
 # === INDICADORES ===
 def ema(s, n): return s.ewm(span=n, adjust=False).mean()
@@ -147,11 +125,13 @@ def atr(df, n=14):
 def fetch_history(tk):
     try:
         if tk.endswith("-USD") or tk.endswith("=X") or tk.endswith("-EUR"):
-            df = yf.download(tk, period="60d", interval="1h", auto_adjust=True, progress=False)
+            df = yf.download(tk, period="30d", interval="1h", auto_adjust=True, progress=False)
         else:
-            df = yf.download(tk, period="1y", interval="1d", auto_adjust=True, progress=False)
+            df = yf.download(tk, period="90d", interval="1d", auto_adjust=True, progress=False)
         return df.dropna()
-    except: return pd.DataFrame()
+    except Exception as e:
+        print(f"[ERROR] Fetching {tk}: {e}")
+        return pd.DataFrame()
 
 # === CÁLCULO DE FEATURES ===
 def compute_features(df):
@@ -203,45 +183,86 @@ def build_caption(tk,f,tend,obj):
             f"Tendencia: {tend} | Objetivo: {obj:.4f}")
 
 def make_chart(df,c,e20,e50,e200,tend,obj):
-    fig, ax = plt.subplots(figsize=(8,4))
-    ax.plot(c, label="Close")
-    ax.plot(e20, label="EMA20")
-    ax.plot(e50, label="EMA50")
-    ax.plot(e200, label="EMA200")
-    ax.axhline(obj, ls="--", lw=1)
-    ax.set_title(f"Señal {tend}")
-    ax.legend(); ax.grid(ls="--", alpha=0.4)
-    buf = io.BytesIO(); fig.tight_layout()
-    fig.savefig(buf, format="png", dpi=130); plt.close(fig)
-    buf.seek(0); return buf.read()
+    try:
+        fig, ax = plt.subplots(figsize=(8,4))
+        ax.plot(c.tail(100), label="Close")  # Solo últimos 100 datos
+        ax.plot(e20.tail(100), label="EMA20")
+        ax.plot(e50.tail(100), label="EMA50")
+        ax.plot(e200.tail(100), label="EMA200")
+        ax.axhline(obj, ls="--", lw=1, color='red')
+        ax.set_title(f"Señal {tend}")
+        ax.legend(); ax.grid(ls="--", alpha=0.4)
+        buf = io.BytesIO(); fig.tight_layout()
+        fig.savefig(buf, format="png", dpi=100)  # Reducida calidad
+        plt.close(fig)
+        buf.seek(0); return buf.read()
+    except Exception as e:
+        print(f"[ERROR] Creating chart: {e}")
+        return None
 
 # === LOOP PRINCIPAL ===
 def loop():
-    send_telegram_text("✅ ULTRA Bot iniciado sin errores en Render.")
+    print(f"[{utc_now()}] Bot iniciando...")
+    send_telegram_text("✅ ULTRA Bot iniciado (versión optimizada para Render)")
+    
     while True:
-        region = get_region_by_time()
-        print(f"[{utc_now()}] Región activa: {region}")
-        for tk in TICKERS_ALL[region]:
-            df = fetch_history(tk)
-            if len(df) < 50: continue
-            try:
-                feat,c,e20,e50,e200 = compute_features(df)
-                tend = classify(feat)
-                if tend == "NEUTRA": continue
-                obj = feat["last"] + feat["atr_abs"] if tend=="ALCISTA" else feat["last"] - feat["atr_abs"]
-                cap = build_caption(tk, feat, tend, obj)
-                img = make_chart(df, c, e20, e50, e200, tend, obj)
-                send_telegram_photo(cap, img, f"{tk}.png")
-                print(f"[{utc_now()}] Señal enviada: {tk} {tend}")
-            except Exception as e:
-                print(f"[{utc_now()}] {tk} error: {e}")
-        print(f"[{utc_now()}] Ciclo terminado.\n")
-        time.sleep(POLL_SECONDS)
+        try:
+            region = get_region_by_time()
+            print(f"\n[{utc_now()}] === Región activa: {region} ===")
+            
+            signals_found = 0
+            for tk in TICKERS_ALL[region]:
+                try:
+                    print(f"[{utc_now()}] Analizando {tk}...", end=" ")
+                    df = fetch_history(tk)
+                    if len(df) < 50: 
+                        print("Datos insuficientes")
+                        continue
+                    
+                    feat,c,e20,e50,e200 = compute_features(df)
+                    tend = classify(feat)
+                    
+                    if tend == "NEUTRA": 
+                        print(f"Neutral (score={feat['score']})")
+                        continue
+                    
+                    print(f"¡SEÑAL {tend}! (score={feat['score']})")
+                    signals_found += 1
+                    
+                    obj = feat["last"] + feat["atr_abs"] if tend=="ALCISTA" else feat["last"] - feat["atr_abs"]
+                    cap = build_caption(tk, feat, tend, obj)
+                    img = make_chart(df, c, e20, e50, e200, tend, obj)
+                    
+                    if img:
+                        send_telegram_photo(cap, img, f"{tk}.png")
+                    else:
+                        send_telegram_text(cap)
+                    
+                    # Pequeña pausa entre señales
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    print(f"[ERROR] {tk}: {e}")
+                    continue
+            
+            print(f"\n[{utc_now()}] Ciclo terminado. Señales encontradas: {signals_found}")
+            print(f"[{utc_now()}] Esperando {POLL_SECONDS}s hasta el próximo análisis...\n")
+            time.sleep(POLL_SECONDS)
+            
+        except Exception as e:
+            err = traceback.format_exc()
+            print(f"[ERROR CRÍTICO] {err}")
+            send_telegram_text(f"⚠️ Error en ciclo:\n{str(e)[:500]}")
+            time.sleep(60)  # Espera 1 min antes de reintentar
 
 if __name__ == "__main__":
     # Iniciar servidor de health check en thread separado
     health_thread = Thread(target=start_health_server, daemon=True)
     health_thread.start()
+    
+    print(f"[{utc_now()}] Aplicación iniciada correctamente")
+    print(f"[{utc_now()}] Puerto: {PORT}")
+    print(f"[{utc_now()}] Telegram configurado: {bool(TELEGRAM_BOT_TOKEN)}")
     
     # Iniciar bot principal
     try:
@@ -249,4 +270,4 @@ if __name__ == "__main__":
     except Exception:
         err = traceback.format_exc()
         print(err)
-        send_telegram_text(f"⚠️ Error crítico:\n{err[:3500]}")
+        send_telegram_text(f"⚠️ Error crítico al iniciar:\n{err[:3500]}")
