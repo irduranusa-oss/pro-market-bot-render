@@ -8,8 +8,8 @@ from flask import Flask
 app = Flask(__name__)
 
 # Configuración
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-CHAT_ID = os.getenv("CHAT_ID", "")
+TELEGRAM_TOKEN = os.getenv("8371038763:AAEtYlJKqR1lD07dB7tdCmR4iR9NfTUTnxU", "")
+CHAT_ID = os.getenv("5424722852", "")
 
 def send_telegram(text):
     if not TELEGRAM_TOKEN or not CHAT_ID:
