@@ -8,8 +8,8 @@ from flask import Flask
 app = Flask(__name__)
 
 # === CONFIG ===
-TELEGRAM_TOKEN = os.getenv("8371038763:AAEtYlJKqR1lD07dB7tdCmR4iR9NfTUTnxU", "")
-CHAT_ID = os.getenv("5424722852", "")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+CHAT_ID = os.getenv("CHAT_ID", "")
 PORT = int(os.environ.get("PORT", 10000))
 
 # === FUNCIONES ===
