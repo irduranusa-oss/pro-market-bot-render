@@ -1,9 +1,6 @@
 pandas==2.0.3
-numpy==1.26.4
-matplotlib==3.8.0
+numpy==1.24.3
+matplotlib==3.7.2
 yfinance==0.2.18
 requests==2.31.0
 flask==2.3.3
-setuptools==69.0.3
-flask==2.3.3
-requests==2.31.0
