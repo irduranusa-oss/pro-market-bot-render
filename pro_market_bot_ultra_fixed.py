@@ -256,18 +256,15 @@ def loop():
             time.sleep(60)  # Espera 1 min antes de reintentar
 
 if __name__ == "__main__":
-    # Iniciar servidor de health check en thread separado
-    health_thread = Thread(target=start_health_server, daemon=True)
-    health_thread.start()
-    
-    print(f"[{utc_now()}] Aplicación iniciada correctamente")
-    print(f"[{utc_now()}] Puerto: {PORT}")
-    print(f"[{utc_now()}] Telegram configurado: {bool(TELEGRAM_BOT_TOKEN)}")
-    
-    # Iniciar bot principal
-    try:
-        loop()
-    except Exception:
-        err = traceback.format_exc()
-        print(err)
-        send_telegram_text(f"⚠️ Error crítico al iniciar:\n{err[:3500]}")
+    import os
+    from datetime import datetime, timezone
+
+    print("🚀 INICIANDO SERVICIO WEB...")
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🌐 Iniciando en puerto: {port}")
+
+    # Enviar mensaje de inicio opcional
+    send_telegram(f"✅ Bot iniciado en Render - Puerto {port}")
+
+    # Iniciar servidor Flask
+    app.run(host="0.0.0.0", port=port, debug=False)
