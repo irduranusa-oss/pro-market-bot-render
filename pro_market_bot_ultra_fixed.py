@@ -1,6 +1,7 @@
 # pro_market_bot_ultra_fixed.py
-# Bot GLOBAL 24/7 – VERSIÓN EXCLUSIVA RENDER
-# ✅ Funciona 100% en la nube - Apaga tu PC cuando quieras
+# Bot GLOBAL 24/7 – rotación automática por región.
+# Señales técnicas fuertes con score, objetivo, gráfico y envío a Telegram.
+# Reqs: pip install yfinance requests pandas numpy matplotlib openpyxl
 
 import os, time, io, json, warnings, traceback, requests
 from datetime import datetime, timezone
@@ -10,15 +11,16 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import yfinance as yf
-from flask import Flask
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# === CONFIGURACIÓN RENDER ===
-# Variables de entorno para seguridad
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_TOKEN", "8371038763:AAEtYlJKqR1lD07dB7tdCmR4iR9NfTUTnxU")
-TELEGRAM_CHAT_ID   = os.getenv("CHAT_ID", "5424722852")
+# === CONFIGURACIÓN CON VARIABLES DE ENTORNO ===
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
+PORT = int(os.getenv("PORT", 10000))
 
 MIN_SCORE   = 60
 BULL_PROB   = 70
@@ -26,38 +28,76 @@ BEAR_PROB   = 30
 MIN_ATR_PCT = 0.4
 POLL_SECONDS = 300
 
+CSV_LOG  = "signals_log.csv"
+XLSX_DASH = "dashboard.xlsx"
+
+# === SERVIDOR HTTP PARA HEALTH CHECK DE RENDER ===
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot running OK')
+    
+    def log_message(self, format, *args):
+        pass  # Silenciar logs del servidor
+
+def start_health_server():
+    server = HTTPServer(('0.0.0.0', PORT), HealthCheckHandler)
+    print(f"[INFO] Health check server running on port {PORT}")
+    server.serve_forever()
+
 # === FUNCIONES DE TIEMPO ===
 def utc_now(): return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 def current_hour(): return datetime.now(timezone.utc).hour
 
-# === LISTA GLOBAL DE TICKERS (optimizada) ===
+# === LISTA GLOBAL DE TICKERS EXTENDIDA ===
 TICKERS_ALL = {
     "AMERICA": [
-        "^GSPC","^DJI","^IXIC","^MXX","^BVSP",
-        "AAPL","MSFT","GOOGL","AMZN","META","TSLA","NVDA",
-        "JPM","V","MA","DIS","NKE","KO","PEP","WMT",
-        "BTC-USD","ETH-USD","SOL-USD",
-        "USDMXN=X","USDCAD=X","USDBRL=X",
-        "GC=F","CL=F","SI=F"
+        "^GSPC","^DJI","^IXIC","^MXX","^BVSP","^RUT","^VIX",
+        "AAPL","MSFT","GOOGL","AMZN","META","TSLA","NVDA","AMD","INTC","JPM","V","MA",
+        "DIS","NKE","PFE","MRNA","KO","PEP","WMT","BA","COST","XOM","CVX",
+        "ORCL","ADBE","CRM","PYPL","AVGO","CSCO","QCOM","ABNB","UBER","SNOW",
+        "BBDC4.SA","ITUB4.SA","PETR4.SA","VALE3.SA","WEGE3.SA","B3SA3.SA",
+        "BTC-USD","ETH-USD","SOL-USD","DOGE-USD","ADA-USD","BNB-USD","XRP-USD","DOT-USD",
+        "USDMXN=X","USDCAD=X","USDCLP=X","USDARS=X","USDCOP=X","USDBRL=X","USDPEN=X",
+        "GC=F","CL=F","SI=F","HG=F","NG=F","ZC=F","ZS=F","ZL=F","ZO=F"
     ],
     "MEXICO": [
         "^MXX",
         "AMXL.MX","GFNORTEO.MX","CEMEXCPO.MX","WALMEX.MX","FEMSAUBD.MX",
-        "BIMBOA.MX","GMEXICOB.MX","ALPEKA.MX","GCC.MX","AC.MX","ALSEA.MX",
-        "USDMXN=X","EURMXN=X",
-        "GC=F","SLV=F"
+        "BIMBOA.MX","GMEXICOB.MX","KIMBERA.MX","ALPEKA.MX","GCC.MX","AC.MX","ALSEA.MX",
+        "TLEVISACPO.MX","BBAJIOO.MX","MEGACPO.MX","GAPB.MX","ASURB.MX","OMAB.MX",
+        "LABB.MX","GFINBURO.MX","PINFRA.MX","ALFA.MX","PE&OLES.MX","CUERVO.MX",
+        "LIVEPOLC-1.MX","ELEKTRA.MX","GRUMAB.MX","GCARSOA1.MX","SORIANAB.MX",
+        "POSADAS.MX","VOLARA.MX","VESTA.MX","FUNO11.MX","TERRA13.MX",
+        "NAFTRACISHRS.MX","MEXTRACISHRS.MX",
+        "USDMXN=X","EURMXN=X","GBPMXN=X","MXNPKR=X",
+        "GC=F","SLV=F","HG=F","CL=F"
     ],
     "EUROPA": [
-        "^FTSE","^GDAXI","^FCHI","^STOXX50E","^IBEX",
-        "SIE.DE","SAP.DE","AIR.PA","BN.PA","MC.PA",
-        "ULVR.L","BP.L","HSBA.L","AZN.L",
-        "EURUSD=X","GBPUSD=X"
+        "^FTSE","^GDAXI","^FCHI","^STOXX50E","^IBEX","^AEX","^OMX","^SMI",
+        "SIE.DE","SAP.DE","VOW3.DE","BMW.DE","BAS.DE","ALV.DE","DAI.DE",
+        "AIR.PA","BN.PA","MC.PA","OR.PA","SAN.PA","TTE.PA","FR.PA",
+        "NESN.SW","ROG.SW","NOVN.SW","UBSG.SW","CSGN.SW","ZURN.SW",
+        "ULVR.L","BP.L","RIO.L","HSBA.L","AZN.L","GSK.L","BATS.L","DGE.L","REL.L",
+        "ENEL.MI","ISP.MI","ENI.MI","STLAM.MI","UCG.MI","PST.MI",
+        "SAN.MC","BBVA.MC","ITX.MC","IBE.MC","REP.MC","TEF.MC","AENA.MC","MAP.MC",
+        "ASML.AS","INGA.AS","PHIA.AS","AD.AS","UNA.AS",
+        "EURUSD=X","GBPUSD=X","EURCHF=X","USDCHF=X","EURGBP=X","EURNOK=X","EURSEK=X",
+        "BTC-EUR","ETH-EUR","SOL-EUR","ADA-EUR"
     ],
     "ASIA": [
-        "^N225","^HSI","^AXJO",
-        "BABA","JD","PDD",
-        "USDJPY=X","AUDUSD=X",
-        "GC=F","CL=F"
+        "^N225","^HSI","^BSESN","^KS11","^TWII","^AXJO","^STI","^JKSE",
+        "7203.T","6758.T","9984.T","8035.T","7974.T","9433.T","9434.T","8766.T",
+        "005930.KS","000660.KS","035420.KS","051910.KS","006400.KS",
+        "2317.TW","2330.TW","2454.TW","2303.TW","2308.TW",
+        "BABA","JD","PDD","TCEHY","NTES","BIDU","NIO","XPEV","LI",
+        "RELIANCE.NS","INFY.NS","TCS.NS","HDFCBANK.NS","ICICIBANK.NS","HINDUNILVR.NS",
+        "BHP.AX","RIO.AX","CBA.AX","NAB.AX","WBC.AX",
+        "BTC-USD","ETH-USD","SOL-USD","XRP-USD","TRX-USD","ADA-USD","AVAX-USD",
+        "USDJPY=X","AUDUSD=X","USDCNH=X","USDINR=X","USDSGD=X","USDKRW=X","USDTWD=X",
+        "GC=F","SI=F","CL=F"
     ]
 }
 
@@ -71,20 +111,19 @@ def get_region_by_time():
 # === TELEGRAM ===
 _http = requests.Session()
 def send_telegram_text(text):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[WARNING] Telegram credentials not configured")
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    try: 
-        _http.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
-        print(f"✅ Telegram: {text[:50]}...")
-    except Exception as e: 
-        print(f"❌ Error Telegram texto: {e}")
+    try: _http.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
+    except Exception as e: print(f"[ERROR] Telegram text: {e}")
 
 def send_telegram_photo(caption, img, filename="chart.png"):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    try: 
-        _http.post(url, files={"photo": (filename, img)}, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption}, timeout=20)
-        print(f"✅ Telegram foto: {caption[:50]}...")
-    except Exception as e: 
-        print(f"❌ Error Telegram foto: {e}")
+    try: _http.post(url, files={"photo": (filename, img)}, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption}, timeout=20)
+    except Exception as e: print(f"[ERROR] Telegram photo: {e}")
 
 # === INDICADORES ===
 def ema(s, n): return s.ewm(span=n, adjust=False).mean()
@@ -107,18 +146,12 @@ def atr(df, n=14):
 # === DESCARGA DE DATOS ===
 def fetch_history(tk):
     try:
-        print(f"📥 Descargando {tk}...")
         if tk.endswith("-USD") or tk.endswith("=X") or tk.endswith("-EUR"):
             df = yf.download(tk, period="60d", interval="1h", auto_adjust=True, progress=False)
         else:
             df = yf.download(tk, period="1y", interval="1d", auto_adjust=True, progress=False)
-        
-        if df.empty:
-            return pd.DataFrame()
         return df.dropna()
-    except Exception as e:
-        print(f"❌ Error descargando {tk}: {e}")
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 # === CÁLCULO DE FEATURES ===
 def compute_features(df):
@@ -128,7 +161,6 @@ def compute_features(df):
     _,_,m_hist = macd(c)
     a = atr(df)
 
-    # valores finales
     last = float(c.iloc[-1]); prev = float(c.iloc[-2])
     e20v, e50v, e200v = float(e20.iloc[-1]), float(e50.iloc[-1]), float(e200.iloc[-1])
     rsi_v = float(r.iloc[-1]); macd_v = float(m_hist.iloc[-1])
@@ -184,73 +216,37 @@ def make_chart(df,c,e20,e50,e200,tend,obj):
     buf.seek(0); return buf.read()
 
 # === LOOP PRINCIPAL ===
-def bot_loop():
-    print("🤖 INICIANDO BOT EN RENDER...")
-    send_telegram_text("✅ ULTRA Bot iniciado en RENDER - PC APAGADA SEGURA")
-    
+def loop():
+    send_telegram_text("✅ ULTRA Bot iniciado sin errores en Render.")
     while True:
-        try:
-            region = get_region_by_time()
-            print(f"[{utc_now()}] 🔄 Región activa: {region}")
-            
-            for tk in TICKERS_ALL[region]:
-                df = fetch_history(tk)
-                if len(df) < 50: continue
-                try:
-                    feat,c,e20,e50,e200 = compute_features(df)
-                    tend = classify(feat)
-                    if tend == "NEUTRA": continue
-                    obj = feat["last"] + feat["atr_abs"] if tend=="ALCISTA" else feat["last"] - feat["atr_abs"]
-                    cap = build_caption(tk, feat, tend, obj)
-                    img = make_chart(df, c, e20, e50, e200, tend, obj)
-                    send_telegram_photo(cap, img, f"{tk}.png")
-                    print(f"[{utc_now()}] ✅ Señal enviada: {tk} {tend}")
-                except Exception as e:
-                    print(f"[{utc_now()}] ❌ {tk} error: {e}")
-            
-            print(f"[{utc_now()}] 🔁 Ciclo terminado - Esperando {POLL_SECONDS}s\n")
-            time.sleep(POLL_SECONDS)
-            
-        except Exception as e:
-            print(f"💥 ERROR GLOBAL: {e}")
-            time.sleep(60)
+        region = get_region_by_time()
+        print(f"[{utc_now()}] Región activa: {region}")
+        for tk in TICKERS_ALL[region]:
+            df = fetch_history(tk)
+            if len(df) < 50: continue
+            try:
+                feat,c,e20,e50,e200 = compute_features(df)
+                tend = classify(feat)
+                if tend == "NEUTRA": continue
+                obj = feat["last"] + feat["atr_abs"] if tend=="ALCISTA" else feat["last"] - feat["atr_abs"]
+                cap = build_caption(tk, feat, tend, obj)
+                img = make_chart(df, c, e20, e50, e200, tend, obj)
+                send_telegram_photo(cap, img, f"{tk}.png")
+                print(f"[{utc_now()}] Señal enviada: {tk} {tend}")
+            except Exception as e:
+                print(f"[{utc_now()}] {tk} error: {e}")
+        print(f"[{utc_now()}] Ciclo terminado.\n")
+        time.sleep(POLL_SECONDS)
 
-# === FLASK PARA RENDER ===
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return f"""
-    <html>
-        <head><title>🤖 Bot Trading 24/7</title></head>
-        <body>
-            <h1>✅ BOT ACTIVO EN RENDER</h1>
-            <p><strong>Tu PC puede estar APAGADA</strong></p>
-            <p>Región: {get_region_by_time()} | Hora: {utc_now()}</p>
-            <p>🤖 Analizando mercados 24/7</p>
-            <p>📱 Enviando señales a Telegram</p>
-        </body>
-    </html>
-    """
-
-@app.route('/health')
-def health():
-    return "🟢 OK - Bot funcionando en Render"
-
-# === INICIO RENDER ===
 if __name__ == "__main__":
-    print("🚀" * 20)
-    print("🤖 BOT INICIANDO EN RENDER")
-    print("💻 PC APAGADA - SEGURO")
-    print("🚀" * 20)
+    # Iniciar servidor de health check en thread separado
+    health_thread = Thread(target=start_health_server, daemon=True)
+    health_thread.start()
     
-    # Iniciar bot en segundo plano
-    import threading
-    bot_thread = threading.Thread(target=bot_loop)
-    bot_thread.daemon = True
-    bot_thread.start()
-    
-    # Iniciar servidor web (OBLIGATORIO para Render)
-    port = int(os.environ.get('PORT', 10000))
-    print(f"🌐 Servidor web en puerto: {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Iniciar bot principal
+    try:
+        loop()
+    except Exception:
+        err = traceback.format_exc()
+        print(err)
+        send_telegram_text(f"⚠️ Error crítico:\n{err[:3500]}")
