@@ -68,14 +68,14 @@ def home():
                 <a href="/test" style="background: #2196F3; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-left: 10px;">📱 Test Telegram</a>
                 <a href="/health" style="background: #FF9800; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-left: 10px;">❤️ Health Check</a>
             </p>
-            <p>Monitoreando: <strong>AAPL, MSFT, TSLA, BTC-USD, GC=F, MXN=X</strong></p>
+            <p>Monitoreando: <strong>AAPL","DLR", "BLK", "MSFT","VNET","CMCSA", "AI", "EQIX", "SIRI", "T", "TSLA","NVDA", "GDS", "VZ", "BTC-USD", "GC=F", "MXN=X</strong></p>
         </body>
     </html>
     """
 
 @app.route('/check')
 def check_all_markets():
-    tickers = ["AAPL", "MSFT", "TSLA", "BTC-USD", "GC=F", "MXN=X"]
+    tickers = ["AAPL","DLR", "BLK", "MSFT","VNET","CMCSA", "AI", "EQIX", "SIRI", "T", "TSLA","NVDA", "GDS", "VZ", "BTC-USD", "GC=F", "MXN=X"]
     signals = []
 
     for ticker in tickers:
@@ -121,7 +121,7 @@ def bot_loop():
     while True:
         try:
             print(f"[{utc_now()}] Ejecutando verificación automática...")
-            tickers = ["AAPL", "MSFT", "TSLA", "BTC-USD", "GC=F", "MXN=X"]
+            tickers = ["AAPL","DLR", "BLK", "MSFT","VNET","CMCSA", "AI", "EQIX", "SIRI", "T", "TSLA","NVDA", "GDS", "VZ", "BTC-USD", "GC=F", "MXN=X"]
             signals = [check_market(t) for t in tickers if check_market(t)]
             if signals:
                 send_telegram("🚨 SEÑALES AUTOMÁTICAS:\n" + "\n".join(signals))
